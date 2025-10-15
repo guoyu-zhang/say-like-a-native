@@ -1,0 +1,8 @@
+yt-dlp
+python-dotenv
+youtube-transcript-api
+google-api-python-client
+opensearch-py
+requests
+boto3 
+requests-aws4auth 
