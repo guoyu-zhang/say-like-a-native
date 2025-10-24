@@ -60,18 +60,30 @@ def store_transcript(client, index_name, video_id, language_code, transcript_ent
     print(f"Stored {len(transcript_entries)} transcript entries for video {video_id}")
 
 
-def search_transcripts(client, index_name, query_text):
-    response = client.search(
-        index=index_name,
-        body={
-            "query": {
-                "match": {
-                    "text": query_text
-                }
-            }
-        },
-    )
-    return [hit["_source"] for hit in response["hits"]["hits"]]
+
+# Load transcript JSON from disk
+
+def load_transcript_payload(file_path: str = None):
+    if file_path:
+        path = Path(file_path)
+    else:
+        # Default to the latest JSON under ingestion/transcripts
+        transcripts_dir = Path(__file__).resolve().parent.parent / "transcripts"
+        if not transcripts_dir.exists():
+            raise FileNotFoundError(f"Transcripts directory not found: {transcripts_dir}")
+        candidates = sorted(transcripts_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not candidates:
+            raise FileNotFoundError(f"No transcript JSON files found in {transcripts_dir}")
+        path = candidates[0]
+
+    with path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    # Validate minimal fields
+    if "entries" not in payload or "video_id" not in payload:
+        raise ValueError("Transcript payload missing required fields: entries, video_id")
+    payload.setdefault("language_code", "unknown")
+    print(f"Loaded transcript file: {path}")
+    return payload
 
 # Load transcript JSON from disk
 
@@ -119,10 +131,6 @@ if __name__ == "__main__":
         INDEX_NAME,
         video_id=payload["video_id"],
         language_code=payload.get("language_code", "unknown"),
-        transcript_entries=payload["entries"],
-    )
+        transcript_entries=payload["entries"],)
 
     print("Indexing complete.")
-
-    results = search_transcripts(client, INDEX_NAME, query_text="example")
-    print("Search Results:", results)
