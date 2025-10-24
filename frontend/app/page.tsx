@@ -2,6 +2,13 @@
 
 import React, { useState } from "react";
 
+type PreviousSegment = {
+  start_time: number;
+  end_time: number;
+  text: string;
+  language_code?: string;
+};
+
 type TranscriptHit = {
   video_id: string;
   language_code?: string;
@@ -9,6 +16,7 @@ type TranscriptHit = {
   end_time: number;
   text: string;
   score?: number;
+  previous?: PreviousSegment | null;
 };
 
 export default function HomePage() {
@@ -72,18 +80,58 @@ export default function HomePage() {
       )}
 
       <ul style={{ listStyle: "none", padding: 0 }}>
-        {results.map((hit, idx) => (
-          <li key={`${hit.video_id}-${hit.start_time}-${idx}`} style={{ marginBottom: "1rem", paddingBottom: "0.75rem", borderBottom: "1px solid #eee" }}>
-            <div style={{ fontSize: "0.9rem", color: "#333" }}>
-              <strong>{hit.text}</strong>
-            </div>
-            <div style={{ fontSize: "0.85rem", color: "#555" }}>
-              [{hit.video_id}] [{hit.start_time.toFixed(2)} - {hit.end_time.toFixed(2)}]
-              {hit.language_code ? ` • ${hit.language_code}` : ""}
-              {typeof hit.score === "number" ? ` • score ${hit.score.toFixed(2)}` : ""}
-            </div>
-          </li>
-        ))}
+        {results.map((hit, idx) => {
+          const earliestStart =
+            typeof hit.previous?.start_time === "number"
+              ? hit.previous.start_time
+              : hit.start_time;
+          const startSec = typeof earliestStart === "number" ? Math.max(0, Math.floor(earliestStart)) : 0;
+          const embedUrl = `https://www.youtube.com/embed/${hit.video_id}?start=${startSec}`;
+          const watchUrl = `https://www.youtube.com/watch?v=${hit.video_id}&t=${startSec}s`;
+          return (
+            <li key={`${hit.video_id}-${hit.start_time}-${idx}`} style={{ marginBottom: "1.25rem", paddingBottom: "1rem", borderBottom: "1px solid #eee" }}>
+              <div style={{ fontSize: "0.9rem", color: "#333" }}>
+                <strong>{hit.text}</strong>
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "#555" }}>
+                [{hit.video_id}] [{typeof hit.start_time === "number" ? hit.start_time.toFixed(2) : ""} - {typeof hit.end_time === "number" ? hit.end_time.toFixed(2) : ""}]
+                {hit.language_code ? ` • ${hit.language_code}` : ""}
+                {typeof hit.score === "number" ? ` • score ${hit.score.toFixed(2)}` : ""}
+              </div>
+
+              {hit.previous && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <div style={{ fontSize: "0.85rem", color: "#444" }}>
+                    <em>Previous</em>: {hit.previous.text}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "#666" }}>
+                    [{typeof hit.previous.start_time === "number" ? hit.previous.start_time.toFixed(2) : ""} - {typeof hit.previous.end_time === "number" ? hit.previous.end_time.toFixed(2) : ""}]
+                    {hit.previous.language_code ? ` • ${hit.previous.language_code}` : ""}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ marginBottom: "0.25rem", fontSize: "0.85rem", color: "#333" }}>
+                  Earliest start: {startSec}s
+                  {" "}
+                  <a href={watchUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "0.5rem" }}>
+                    Open in YouTube
+                  </a>
+                </div>
+                <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: 8 }}>
+                  <iframe
+                    src={embedUrl}
+                    title={`YouTube video ${hit.video_id}`}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       <div style={{ marginTop: "1rem", fontSize: "0.85rem", color: "#777" }}>

@@ -41,22 +41,61 @@ def read_root():
 @app.get("/search")
 def search(q: str, size: int = 25):
     def do_search():
-        body = {"query": {"match": {"text": q}}, "size": size}
+        fetch_size = max(size * 3, size)
+        body = {"query": {"match": {"text": q}}, "size": fetch_size}
         return client.search(index="youtube-transcripts", body=body)
 
     try:
         resp = executor.submit(do_search).result(timeout=15)
-        results = [
-            {
-                "video_id": hit["_source"].get("video_id"),
-                "language_code": hit["_source"].get("language_code"),
-                "start_time": hit["_source"].get("start_time"),
-                "end_time": hit["_source"].get("end_time"),
-                "text": hit["_source"].get("text"),
+        seen = set()
+        results = []
+        for hit in resp["hits"]["hits"]:
+            src = hit["_source"]
+            vid = src.get("video_id")
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+
+            # Find the immediately previous segment for this video (same language if available)
+            prev = None
+            try:
+                lang = src.get("language_code")
+                start = src.get("start_time")
+                if isinstance(start, (int, float)):
+                    prev_query = {
+                        "query": {
+                            "bool": {
+                                "must": [{"term": {"video_id": vid}}] + ([{"term": {"language_code": lang}}] if lang else []),
+                                "filter": [{"range": {"start_time": {"lt": start}}}],
+                            }
+                        },
+                        "sort": [{"start_time": {"order": "desc"}}],
+                        "size": 1,
+                    }
+                    prev_resp = client.search(index="youtube-transcripts", body=prev_query)
+                    prev_hits = prev_resp.get("hits", {}).get("hits", [])
+                    if prev_hits:
+                        prev_src = prev_hits[0].get("_source", {})
+                        prev = {
+                            "start_time": prev_src.get("start_time"),
+                            "end_time": prev_src.get("end_time"),
+                            "text": prev_src.get("text"),
+                            "language_code": prev_src.get("language_code"),
+                        }
+            except Exception:
+                prev = None
+
+            results.append({
+                "video_id": vid,
+                "language_code": src.get("language_code"),
+                "start_time": src.get("start_time"),
+                "end_time": src.get("end_time"),
+                "text": src.get("text"),
                 "score": hit.get("_score"),
-            }
-            for hit in resp["hits"]["hits"]
-        ]
+                "previous": prev,
+            })
+            if len(results) >= size:
+                break
         return {"query": q, "count": len(results), "results": results}
     except Exception as e:
         return {"query": q, "error": str(e), "results": []}
