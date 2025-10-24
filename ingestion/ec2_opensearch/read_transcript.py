@@ -1,6 +1,7 @@
 import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from dotenv import load_dotenv
+import argparse
 
 # Load environment variables from a .env file if present
 load_dotenv()
@@ -54,12 +55,14 @@ if __name__ == "__main__":
         verify_certs=EC2_OPENSEARCH_VERIFY_CERTS,
     )
 
-    video_transcripts = read_transcript_by_video(client, INDEX_NAME, "abc123")
-    print("Transcripts for video abc123:")
-    for entry in video_transcripts:
-        print(f"[{entry['start_time']:.2f}-{entry['end_time']:.2f}] {entry['text']}")
+    parser = argparse.ArgumentParser(description="Search for a phrase in OpenSearch transcripts")
+    parser.add_argument("--query", "-q", help="Phrase to search in transcript text")
+    args = parser.parse_args()
 
-    keyword_results = search_transcripts(client, INDEX_NAME, "example")
-    print("\nSearch results for 'example':")
-    for entry in keyword_results:
-        print(f"[{entry['video_id']}] [{entry['start_time']:.2f}-{entry['end_time']:.2f}] {entry['text']}")
+    if args.query:
+        keyword_results = search_transcripts(client, INDEX_NAME, args.query)
+        print(f"\nSearch results for '{args.query}':")
+        for entry in keyword_results:
+            print(f"[{entry['video_id']}] [{entry['start_time']:.2f}-{entry['end_time']:.2f}] {entry['text']}")
+    else:
+        print("Provide a search phrase with --query.")
