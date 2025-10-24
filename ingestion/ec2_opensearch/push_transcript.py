@@ -1,6 +1,8 @@
 import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from dotenv import load_dotenv
+import json
+from pathlib import Path
 
 # Load environment variables from a .env file if present
 load_dotenv()
@@ -11,6 +13,7 @@ EC2_OPENSEARCH_USERNAME = os.getenv("EC2_OPENSEARCH_USERNAME")
 EC2_OPENSEARCH_PASSWORD = os.getenv("EC2_OPENSEARCH_PASSWORD")
 EC2_OPENSEARCH_USE_SSL = os.getenv("EC2_OPENSEARCH_USE_SSL", "false").lower() == "true"
 EC2_OPENSEARCH_VERIFY_CERTS = os.getenv("EC2_OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
+TRANSCRIPT_FILE = os.getenv("TRANSCRIPT_FILE")
 
 
 def get_opensearch_client(host, port, username, password, use_ssl=False, verify_certs=False):
@@ -70,6 +73,30 @@ def search_transcripts(client, index_name, query_text):
     )
     return [hit["_source"] for hit in response["hits"]["hits"]]
 
+# Load transcript JSON from disk
+
+def load_transcript_payload(file_path: str = None):
+    if file_path:
+        path = Path(file_path)
+    else:
+        # Default to the latest JSON under ingestion/transcripts
+        transcripts_dir = Path(__file__).resolve().parent.parent / "transcripts"
+        if not transcripts_dir.exists():
+            raise FileNotFoundError(f"Transcripts directory not found: {transcripts_dir}")
+        candidates = sorted(transcripts_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not candidates:
+            raise FileNotFoundError(f"No transcript JSON files found in {transcripts_dir}")
+        path = candidates[0]
+
+    with path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    # Validate minimal fields
+    if "entries" not in payload or "video_id" not in payload:
+        raise ValueError("Transcript payload missing required fields: entries, video_id")
+    payload.setdefault("language_code", "unknown")
+    print(f"Loaded transcript file: {path}")
+    return payload
+
 
 if __name__ == "__main__":
     INDEX_NAME = "youtube-transcripts"
@@ -84,18 +111,18 @@ if __name__ == "__main__":
     )
     create_index_if_not_exists(client, INDEX_NAME)
 
-    example_transcript = [
-        {"start": 0.5, "duration": 2.0, "text": "Welcome to the video"},
-        {"start": 2.5, "duration": 3.0, "text": "This is an example transcript"},
-    ]
+    # Load transcript payload from file (env TRANSCRIPT_FILE or latest in transcripts dir)
+    payload = load_transcript_payload(TRANSCRIPT_FILE)
 
     store_transcript(
         client,
         INDEX_NAME,
-        video_id="abc123",
-        language_code="en",
-        transcript_entries=example_transcript,
+        video_id=payload["video_id"],
+        language_code=payload.get("language_code", "unknown"),
+        transcript_entries=payload["entries"],
     )
+
+    print("Indexing complete.")
 
     results = search_transcripts(client, INDEX_NAME, query_text="example")
     print("Search Results:", results)

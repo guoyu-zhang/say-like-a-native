@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.proxies import WebshareProxyConfig
+import json
+from pathlib import Path
 
 def load_environment():
     load_dotenv()
@@ -56,6 +58,26 @@ def fetch_transcript(video_id, proxy_username, proxy_password):
     transcript = ytt_api.fetch(video_id)
     return transcript.to_raw_data()
 
+# Save transcript entries to a JSON file alongside video metadata
+
+def save_transcript_to_file(video_id, transcript_entries, language_code=None, output_dir=None):
+    # Default output directory under ingestion/transcripts
+    base_dir = Path(__file__).resolve().parent
+    transcripts_dir = Path(output_dir) if output_dir else base_dir / "transcripts"
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "video_id": video_id,
+        "language_code": language_code or "unknown",
+        "entries": transcript_entries,
+    }
+
+    out_path = transcripts_dir / f"{video_id}.json"
+    with out_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print(f"Saved transcript to: {out_path}")
+    return str(out_path)
+
 
 if __name__ == "__main__":
     API_KEY, PROXY_USERNAME, PROXY_PASSWORD = load_environment()
@@ -69,4 +91,5 @@ if __name__ == "__main__":
     print_video_info(video_info)
 
     transcript = fetch_transcript(latest_video_id, PROXY_USERNAME, PROXY_PASSWORD)
-    print(transcript)
+    # Persist transcript to file for later ingestion
+    save_transcript_to_file(latest_video_id, transcript, language_code=(video_info["snippet"].get("defaultAudioLanguage") or "unknown"))
