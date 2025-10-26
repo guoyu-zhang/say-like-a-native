@@ -7,6 +7,8 @@ import os
 
 app = FastAPI()
 
+load_dotenv()
+
 # Get allowed origins from environment variable for production
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -20,8 +22,7 @@ app.add_middleware(
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-load_dotenv()
-EC2_OPENSEARCH_HOST = os.getenv("EC2_OPENSEARCH_HOST", "")
+EC2_OPENSEARCH_HOST = os.getenv("EC2_OPENSEARCH_HOST", "localhost")
 EC2_OPENSEARCH_PORT = os.getenv("EC2_OPENSEARCH_PORT", "9200")
 EC2_OPENSEARCH_USERNAME = os.getenv("EC2_OPENSEARCH_USERNAME", "admin")
 EC2_OPENSEARCH_PASSWORD = os.getenv("EC2_OPENSEARCH_PASSWORD", "YourStrongPassword123!")
