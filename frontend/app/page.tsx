@@ -19,10 +19,38 @@ type TranscriptHit = {
   previous?: PreviousSegment | null;
 };
 
-// YouTube IFrame API global (avoid TS errors)
+// YouTube IFrame API types
+interface YouTubePlayer {
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  playVideo: () => void;
+  pauseVideo: () => void;
+  getCurrentTime: () => number;
+  getPlayerState: () => number;
+  destroy: () => void;
+}
+
+interface YouTubePlayerEvent {
+  data: number;
+}
+
+interface YouTubeAPI {
+  Player: new (elementId: string, config: {
+    events?: {
+      onStateChange?: (event: YouTubePlayerEvent) => void;
+    };
+  }) => YouTubePlayer;
+  PlayerState: {
+    PLAYING: number;
+    PAUSED: number;
+    ENDED: number;
+    BUFFERING: number;
+    CUED: number;
+  };
+}
+
 declare global {
   interface Window {
-    YT?: any;
+    YT?: YouTubeAPI;
     onYouTubeIframeAPIReady?: () => void;
   }
 }
@@ -34,7 +62,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const playersRef = useRef<Record<string, any>>({});
+  const playersRef = useRef<Record<string, YouTubePlayer>>({});
 
   const replayPhrase = (videoId: string, idx: number, startTime: number) => {
     const key = `${videoId}-${idx}`;
@@ -66,8 +94,8 @@ export default function HomePage() {
       }
       const data = await res.json();
       setResults(Array.isArray(data?.results) ? data.results : []);
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -91,12 +119,12 @@ export default function HomePage() {
         const playerId = `yt-player-${key}`;
         if (playersRef.current[key]) return; // already created
         const el = document.getElementById(playerId);
-        if (!el || !(window as any).YT || !(window as any).YT.Player) return;
-        const YT = (window as any).YT;
+        if (!el || !window.YT || !window.YT.Player) return;
+        const YT = window.YT;
         playersRef.current[key] = new YT.Player(playerId, {
           events: {
-            onStateChange: (e: any) => {
-              const state = e?.data;
+            onStateChange: (e: YouTubePlayerEvent) => {
+              const state = e.data;
               const player = playersRef.current[key];
               if (!player || typeof player.getCurrentTime !== "function")
                 return;
