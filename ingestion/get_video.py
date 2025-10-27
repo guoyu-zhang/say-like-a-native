@@ -15,16 +15,11 @@ def load_environment():
     return api_key, proxy_username, proxy_password
 
 def read_channel_ids(file_path="channels.txt"):
-    """
-    Read channel IDs from a text file, one per line.
-    Returns a list of channel IDs, ignoring empty lines and comments.
-    """
     channels = []
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                # Skip empty lines and comments (lines starting with #)
                 if line and not line.startswith('#'):
                     channels.append(line)
         return channels
@@ -33,14 +28,8 @@ def read_channel_ids(file_path="channels.txt"):
         return []
 
 def is_long_form_video(duration_iso):
-    """
-    Parse ISO 8601 duration and return True if video is longer than 60 seconds.
-    Duration format: PT1H2M3S (1 hour, 2 minutes, 3 seconds)
-    """
-    # Remove PT prefix
     duration = duration_iso[2:]
     
-    # Extract hours, minutes, seconds using regex
     hours = re.search(r'(\d+)H', duration)
     minutes = re.search(r'(\d+)M', duration)
     seconds = re.search(r'(\d+)S', duration)

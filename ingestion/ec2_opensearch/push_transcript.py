@@ -3,6 +3,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from dotenv import load_dotenv
 import json
 from pathlib import Path
+import shutil
 
 # Load environment variables from a .env file if present
 load_dotenv()
@@ -85,6 +86,22 @@ def load_transcript_payload(file_path: str = None):
     print(f"Loaded transcript file: {path}")
     return payload
 
+
+def move_to_storage(transcript_path: Path):
+    """
+    Move a processed transcript file to the storage folder.
+    Creates the storage folder if it doesn't exist.
+    """
+    # Get the storage directory (sibling to transcripts folder)
+    storage_dir = transcript_path.parent.parent / "store"
+    storage_dir.mkdir(exist_ok=True)
+    
+    # Move the file to storage
+    destination = storage_dir / transcript_path.name
+    shutil.move(str(transcript_path), str(destination))
+    print(f"Moved processed transcript to: {destination}")
+    return destination
+
 # Load transcript JSON from disk
 
 def load_transcript_payload(file_path: str = None):
@@ -123,14 +140,79 @@ if __name__ == "__main__":
     )
     create_index_if_not_exists(client, INDEX_NAME)
 
-    # Load transcript payload from file (env TRANSCRIPT_FILE or latest in transcripts dir)
-    payload = load_transcript_payload(TRANSCRIPT_FILE)
-
-    store_transcript(
-        client,
-        INDEX_NAME,
-        video_id=payload["video_id"],
-        language_code=payload.get("language_code", "unknown"),
-        transcript_entries=payload["entries"],)
-
-    print("Indexing complete.")
+    # If TRANSCRIPT_FILE is specified, process only that file
+    if TRANSCRIPT_FILE:
+        print(f"Processing specific file: {TRANSCRIPT_FILE}")
+        try:
+            payload = load_transcript_payload(TRANSCRIPT_FILE)
+            store_transcript(
+                client,
+                INDEX_NAME,
+                video_id=payload["video_id"],
+                language_code=payload.get("language_code", "unknown"),
+                transcript_entries=payload["entries"],
+            )
+            
+            # Move to storage after successful processing
+            transcript_path = Path(TRANSCRIPT_FILE)
+            move_to_storage(transcript_path)
+            print(f"Successfully processed and moved: {TRANSCRIPT_FILE}")
+            
+        except Exception as e:
+            print(f"Error processing {TRANSCRIPT_FILE}: {e}")
+    else:
+        # Process all JSON files in the transcripts directory
+        transcripts_dir = Path(__file__).resolve().parent.parent / "transcripts"
+        if not transcripts_dir.exists():
+            print(f"Transcripts directory not found: {transcripts_dir}")
+            exit(1)
+            
+        json_files = list(transcripts_dir.glob("*.json"))
+        if not json_files:
+            print(f"No JSON files found in {transcripts_dir}")
+            exit(1)
+            
+        print(f"Found {len(json_files)} transcript files to process...")
+        
+        processed_count = 0
+        failed_count = 0
+        
+        for json_file in json_files:
+            try:
+                print(f"\nProcessing: {json_file.name}")
+                
+                # Load and validate the transcript
+                with json_file.open("r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                    
+                if "entries" not in payload or "video_id" not in payload:
+                    print(f"Skipping {json_file.name}: Missing required fields (entries, video_id)")
+                    failed_count += 1
+                    continue
+                    
+                payload.setdefault("language_code", "unknown")
+                
+                # Store in OpenSearch
+                store_transcript(
+                    client,
+                    INDEX_NAME,
+                    video_id=payload["video_id"],
+                    language_code=payload.get("language_code", "unknown"),
+                    transcript_entries=payload["entries"],
+                )
+                
+                # Move to storage after successful processing
+                move_to_storage(json_file)
+                processed_count += 1
+                print(f"✓ Successfully processed: {json_file.name}")
+                
+            except Exception as e:
+                print(f"✗ Error processing {json_file.name}: {e}")
+                failed_count += 1
+                continue
+        
+        print(f"\n=== Processing Summary ===")
+        print(f"Total files: {len(json_files)}")
+        print(f"Successfully processed: {processed_count}")
+        print(f"Failed: {failed_count}")
+        print("Indexing complete.")
