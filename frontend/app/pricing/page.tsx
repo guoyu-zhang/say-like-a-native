@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import Footer from "../components/Footer";
 
 export default function PricingPage() {
@@ -17,32 +18,32 @@ export default function PricingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <a
+              <Link
                 href="/"
                 className="text-xl font-medium text-gray-800 hover:text-blue-700 transition-colors"
               >
                 Say Like a Native
-              </a>
+              </Link>
             </div>
             <div className="flex space-x-8">
-              <a
+              <Link
                 href="/"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Search
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/learn"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Learn
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/pricing"
                 className="text-blue-700 font-semibold px-3 py-2 text-sm transition-colors duration-200"
               >
                 Pricing
-              </a>
+              </Link>
             </div>
           </div>
         </div>

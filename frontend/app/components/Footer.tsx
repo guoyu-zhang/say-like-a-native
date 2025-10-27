@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 
 export default function Footer() {
   return (
@@ -29,28 +30,28 @@ export default function Footer() {
             </h4>
             <ul className="space-y-2">
               <li>
-                <a
+                <Link
                   href="/"
                   className="text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   Search
-                </a>
+                </Link>
               </li>
               <li>
-                <a
+                <Link
                   href="/learn"
                   className="text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   Learn
-                </a>
+                </Link>
               </li>
               <li>
-                <a
+                <Link
                   href="/pricing"
                   className="text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   Pricing
-                </a>
+                </Link>
               </li>
               <li>
                 <a

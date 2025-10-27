@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import Footer from "../components/Footer";
 
 export default function LearnPage() {
@@ -17,29 +18,29 @@ export default function LearnPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <a href="/" className="text-xl font-medium text-gray-800 hover:text-blue-700 transition-colors">
+              <Link href="/" className="text-xl font-medium text-gray-800 hover:text-blue-700 transition-colors">
                 Say Like a Native
-              </a>
+              </Link>
             </div>
             <div className="flex space-x-8">
-              <a
+              <Link
                 href="/"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Search
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/learn"
                 className="text-blue-700 font-semibold px-3 py-2 text-sm transition-colors duration-200"
               >
                 Learn
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/pricing"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Pricing
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -109,9 +110,9 @@ export default function LearnPage() {
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <h3 className="font-medium text-gray-800 mb-3">Tempor Incididunt</h3>
                       <ul className="space-y-1 text-sm text-gray-600">
-                        <li>• "Ut labore et dolore magna"</li>
-                        <li>• "Aliqua enim ad minim veniam"</li>
-                        <li>• "Quis nostrud exercitation"</li>
+                        <li>• &quot;Ut labore et dolore magna&quot;</li>
+                        <li>• &quot;Aliqua enim ad minim veniam&quot;</li>
+                        <li>• &quot;Quis nostrud exercitation&quot;</li>
                       </ul>
                     </div>
                   </div>

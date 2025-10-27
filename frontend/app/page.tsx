@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import Footer from "./components/Footer";
 
 type PreviousSegment = {
@@ -61,7 +62,7 @@ declare global {
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
-  const [size, setSize] = useState<number>(5);
+  const [size] = useState<number>(5);
   const [language, setLanguage] = useState<string>("all");
   const [results, setResults] = useState<TranscriptHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -205,24 +206,24 @@ export default function HomePage() {
               </h1>
             </div>
             <div className="flex space-x-8">
-              <a
+              <Link
                 href="/"
                 className="text-blue-700 font-semibold px-3 py-2 rounded-md text-sm transition-colors duration-200"
               >
                 Search
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/learn"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Learn
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/pricing"
                 className="text-gray-700 hover:text-blue-700 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Pricing
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -452,7 +453,7 @@ export default function HomePage() {
 
                     {/* Combined Phrase */}
                     <div className="text-lg font-semibold text-gray-800">
-                      "{combinedPhrase}"
+                      &quot;{combinedPhrase}&quot;
                     </div>
                   </div>
                 );
@@ -477,7 +478,7 @@ export default function HomePage() {
                 </div>
                 {/* Mock phrase text */}
                 <div className="text-lg font-semibold text-gray-800">
-                  "Mock phrase text"
+                  &quot;Mock phrase text&quot;
                 </div>
               </div>
             </div>
@@ -536,7 +537,7 @@ export default function HomePage() {
                     Search Results Will Appear Here
                   </h3>
                   <p className="text-gray-600">
-                    Enter a phrase above and click "Search" to find
+                    Enter a phrase above and click &quot;Search&quot; to find
                     pronunciation examples from real conversations.
                   </p>
                 </div>
