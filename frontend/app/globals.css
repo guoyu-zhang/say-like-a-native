@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Remove blue highlight and focus outline from navigation links */
+nav a {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-highlight: none !important;
+}
+
+nav a:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+nav a:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Prevent text selection highlighting on navigation */
+nav a::selection {
+  background: transparent !important;
+}
+
+nav a::-moz-selection {
+  background: transparent !important;
+}
