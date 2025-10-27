@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -13,6 +14,47 @@ def load_environment():
     proxy_password = os.getenv("PROXY_PASSWORD")
     return api_key, proxy_username, proxy_password
 
+def read_channel_ids(file_path="channels.txt"):
+    """
+    Read channel IDs from a text file, one per line.
+    Returns a list of channel IDs, ignoring empty lines and comments.
+    """
+    channels = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments (lines starting with #)
+                if line and not line.startswith('#'):
+                    channels.append(line)
+        return channels
+    except FileNotFoundError:
+        print(f"Warning: {file_path} not found. Using default channel.")
+        return []
+
+def is_long_form_video(duration_iso):
+    """
+    Parse ISO 8601 duration and return True if video is longer than 60 seconds.
+    Duration format: PT1H2M3S (1 hour, 2 minutes, 3 seconds)
+    """
+    # Remove PT prefix
+    duration = duration_iso[2:]
+    
+    # Extract hours, minutes, seconds using regex
+    hours = re.search(r'(\d+)H', duration)
+    minutes = re.search(r'(\d+)M', duration)
+    seconds = re.search(r'(\d+)S', duration)
+    
+    total_seconds = 0
+    if hours:
+        total_seconds += int(hours.group(1)) * 3600
+    if minutes:
+        total_seconds += int(minutes.group(1)) * 60
+    if seconds:
+        total_seconds += int(seconds.group(1))
+    
+    return total_seconds > 180
+
 def get_youtube_service(api_key):
     return build("youtube", "v3", developerKey=api_key)
 
@@ -20,14 +62,27 @@ def get_latest_video_id(youtube, channel_id):
     response = youtube.search().list(
         part="id",
         channelId=channel_id,
-        maxResults=1,
+        maxResults=10,  
         order="date",
         type="video"
     ).execute()
     items = response.get("items")
     if not items:
         raise ValueError("No videos found for this channel.")
-    return items[0]["id"]["videoId"]
+    
+    for item in items:
+        video_id = item["id"]["videoId"]
+        video_details = youtube.videos().list(
+            part="contentDetails",
+            id=video_id
+        ).execute()
+        
+        if video_details["items"]:
+            duration = video_details["items"][0]["contentDetails"]["duration"]
+            if is_long_form_video(duration):
+                return video_id
+    
+    raise ValueError("No long-form videos found for this channel (only shorts available).")
 
 def get_video_info(youtube, video_id):
     response = youtube.videos().list(
@@ -46,22 +101,24 @@ def print_video_info(video_info):
     print("Audio language:", snippet.get("defaultAudioLanguage"))
     print("View count:", stats.get("viewCount"))
     print("Duration (ISO 8601):", content["duration"])
-    print("Captions available:", content.get("caption") == "true")
 
 def fetch_transcript(video_id, proxy_username, proxy_password):
-    ytt_api = YouTubeTranscriptApi(
-        proxy_config=WebshareProxyConfig(
-            proxy_username=proxy_username,
-            proxy_password=proxy_password
+    try:
+        ytt_api = YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(
+                proxy_username=proxy_username,
+                proxy_password=proxy_password
+            )
         )
-    )
-    transcript = ytt_api.fetch(video_id)
-    return transcript.to_raw_data()
+        transcript = ytt_api.fetch(video_id)
+        print("Transcripts available: True")
+        return transcript.to_raw_data()
+    except Exception as e:
+        print(f"Transcripts available: False - {str(e)}")
+        return None
 
-# Save transcript entries to a JSON file alongside video metadata
 
 def save_transcript_to_file(video_id, transcript_entries, language_code=None, output_dir=None):
-    # Default output directory under ingestion/transcripts
     base_dir = Path(__file__).resolve().parent
     transcripts_dir = Path(output_dir) if output_dir else base_dir / "transcripts"
     transcripts_dir.mkdir(parents=True, exist_ok=True)
@@ -80,16 +137,36 @@ def save_transcript_to_file(video_id, transcript_entries, language_code=None, ou
 
 
 if __name__ == "__main__":
-    API_KEY, PROXY_USERNAME, PROXY_PASSWORD = load_environment()
-    CHANNEL_ID = "UCftwRNsjfRo08xYE31tkiyw"
-
-    youtube = build("youtube", "v3", developerKey=API_KEY)
-    latest_video_id = get_latest_video_id(youtube, CHANNEL_ID)
-    print(f"Latest video ID: {latest_video_id}")
-
-    video_info = get_video_info(youtube, latest_video_id)
-    print_video_info(video_info)
-
-    transcript = fetch_transcript(latest_video_id, PROXY_USERNAME, PROXY_PASSWORD)
-    # Persist transcript to file for later ingestion
-    save_transcript_to_file(latest_video_id, transcript, language_code=(video_info["snippet"].get("defaultAudioLanguage") or "unknown"))
+    api_key, proxy_username, proxy_password = load_environment()
+    
+    channel_ids = read_channel_ids()
+    
+    if not channel_ids:
+        channel_ids = ["UCftwRNsjfRo08xYE31tkiyw"]  
+    
+    print(f"Processing {len(channel_ids)} channel(s)...")
+    
+    for i, channel_id in enumerate(channel_ids, 1):
+        print(f"\n--- Processing Channel {i}/{len(channel_ids)}: {channel_id} ---")
+        
+        try:
+            youtube = build("youtube", "v3", developerKey=api_key)
+            latest_video_id = get_latest_video_id(youtube, channel_id)
+            print(f"Latest video ID: {latest_video_id}")
+            
+            video_info = get_video_info(youtube, latest_video_id)
+            print_video_info(video_info)
+            
+            transcript = fetch_transcript(latest_video_id, proxy_username, proxy_password)
+            
+            if transcript is not None:
+                save_transcript_to_file(latest_video_id, transcript, language_code=(video_info["snippet"].get("defaultAudioLanguage") or "unknown"))
+                print(f"Transcript saved for video {latest_video_id}")
+            else:
+                print(f"No transcripts available for video {latest_video_id}. Skipping transcript save.")
+                
+        except Exception as e:
+            print(f"Error processing channel {channel_id}: {e}")
+            continue  # Continue with next channel even if one fails
+    
+    print(f"\nCompleted processing all channels.")
