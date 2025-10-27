@@ -62,7 +62,7 @@ declare global {
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
-  const [size] = useState<number>(5);
+  const [size] = useState<number>(1);
   const [language, setLanguage] = useState<string>("all");
   const [results, setResults] = useState<TranscriptHit[]>([]);
   const [loading, setLoading] = useState(false);

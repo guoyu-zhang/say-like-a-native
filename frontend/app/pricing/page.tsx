@@ -220,7 +220,7 @@ export default function PricingPage() {
         </div>
 
         {/* FAQ Section */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
+        <div className="bg-white rounded-xl p-8">
           <h2 className="text-3xl font-bold text-gray-800 text-center mb-8">
             Frequently Asked Questions
           </h2>
