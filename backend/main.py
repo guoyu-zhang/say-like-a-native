@@ -103,3 +103,127 @@ def search(q: str, size: int = 25):
         return {"query": q, "count": len(results), "results": results}
     except Exception as e:
         return {"query": q, "error": str(e), "results": []}
+
+@app.get("/autocomplete")
+def autocomplete(q: str, size: int = 5):
+    if len(q.strip()) < 2:  # Don't suggest for very short queries
+        return {"query": q, "suggestions": []}
+    
+    def do_autocomplete():
+        # Use match_phrase_prefix for fast prefix matching
+        body = {
+            "query": {
+                "match_phrase_prefix": {
+                    "text": {
+                        "query": q,
+                        "max_expansions": 10
+                    }
+                }
+            },
+            "size": size * 2,  # Get more results to deduplicate
+            "_source": ["text", "video_id", "start_time", "end_time"],  # Include timing info
+            "timeout": "500ms"  # Fast timeout for autocomplete
+        }
+        return client.search(index="youtube-transcripts", body=body)
+
+    try:
+        resp = executor.submit(do_autocomplete).result(timeout=2)
+        suggestions = []
+        seen_texts = set()
+        
+        for hit in resp["hits"]["hits"]:
+            text = hit["_source"].get("text", "").strip()
+            if text and text not in seen_texts and len(suggestions) < size:
+                # Extract the relevant phrase around the match
+                words = text.split()
+                if len(words) > 10:  # Truncate long texts
+                    text = " ".join(words[:10]) + "..."
+                
+                suggestions.append({
+                    "text": text,
+                    "video_id": hit["_source"].get("video_id"),
+                    "start_time": hit["_source"].get("start_time"),
+                    "end_time": hit["_source"].get("end_time"),
+                    "score": hit.get("_score")
+                })
+                seen_texts.add(text)
+        
+        return {"query": q, "suggestions": suggestions}
+    except Exception as e:
+        return {"query": q, "suggestions": [], "error": str(e)}
+
+@app.get("/video-search")
+def video_search(video_id: str, q: str = "", size: int = 25, single_result: bool = False):
+    def do_video_search():
+        # Build query for specific video
+        if q.strip():
+            # Search for text within the specific video
+            body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"video_id": video_id}},
+                            {"match": {"text": q}}
+                        ]
+                    }
+                },
+                "size": 1 if single_result else size
+            }
+        else:
+            # Get all segments from the video
+            body = {
+                "query": {"term": {"video_id": video_id}},
+                "size": 1 if single_result else size,
+                "sort": [{"start_time": {"order": "asc"}}]
+            }
+        
+        return client.search(index="youtube-transcripts", body=body)
+
+    try:
+        resp = executor.submit(do_video_search).result(timeout=10)
+        results = []
+        
+        for hit in resp["hits"]["hits"]:
+            src = hit["_source"]
+            
+            # Find previous segment for context
+            prev_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"video_id": src.get("video_id")}},
+                            {"range": {"end_time": {"lt": src.get("start_time", 0)}}}
+                        ]
+                    }
+                },
+                "sort": [{"end_time": {"order": "desc"}}],
+                "size": 1
+            }
+            
+            try:
+                prev_resp = client.search(index="youtube-transcripts", body=prev_body)
+                previous = None
+                if prev_resp["hits"]["hits"]:
+                    prev_src = prev_resp["hits"]["hits"][0]["_source"]
+                    previous = {
+                        "start_time": prev_src.get("start_time"),
+                        "end_time": prev_src.get("end_time"),
+                        "text": prev_src.get("text"),
+                        "language_code": prev_src.get("language_code")
+                    }
+            except:
+                previous = None
+            
+            results.append({
+                "video_id": src.get("video_id"),
+                "language_code": src.get("language_code"),
+                "start_time": src.get("start_time"),
+                "end_time": src.get("end_time"),
+                "text": src.get("text"),
+                "score": hit.get("_score"),
+                "previous": previous
+            })
+        
+        return {"video_id": video_id, "query": q, "results": results}
+    except Exception as e:
+        return {"video_id": video_id, "query": q, "results": [], "error": str(e)}

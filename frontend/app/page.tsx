@@ -21,6 +21,13 @@ type TranscriptHit = {
   previous?: PreviousSegment | null;
 };
 
+type AutocompleteSuggestion = {
+  text: string;
+  video_id: string;
+  start_time?: number;
+  end_time?: number;
+};
+
 // YouTube IFrame API types
 interface YouTubePlayer {
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
@@ -62,14 +69,26 @@ declare global {
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
-  const [size] = useState<number>(1);
-  const [language, setLanguage] = useState<string>("all");
   const [results, setResults] = useState<TranscriptHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+
+  const formatTime = (seconds: number | undefined): string => {
+    if (typeof seconds !== 'number') return '';
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
   const playersRef = useRef<Record<string, YouTubePlayer>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const replayPhrase = (videoId: string, idx: number, startTime: number) => {
     const key = `${videoId}-${idx}`;
@@ -84,34 +103,141 @@ export default function HomePage() {
     }
   };
 
-  const runSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResults([]);
-    setHasSearched(true);
-    try {
-      // Use environment variable for API URL, fallback to localhost for development
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      let url = `${apiUrl}/search?q=${encodeURIComponent(query)}&size=${size}`;
 
-      // Add language parameter if a specific language is selected
-      if (language && language !== "all") {
-        url += `&language=${encodeURIComponent(language)}`;
-      }
+
+  const fetchSuggestions = async (searchQuery: string) => {
+    if (!searchQuery.trim() || searchQuery.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setIsLoadingSuggestions(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const url = `${apiUrl}/autocomplete?q=${encodeURIComponent(searchQuery)}&size=5`;
 
       const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Search failed: HTTP ${res.status}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
+        setShowSuggestions(true);
+        setSelectedSuggestionIndex(-1);
       }
-      const data = await res.json();
-      setResults(Array.isArray(data?.results) ? data.results : []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+    } catch (err) {
+      console.error("Autocomplete error:", err);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    debounceTimeoutRef.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 300); // 300ms debounce
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => 
+          prev < suggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+        break;
+      case "Enter":
+        if (selectedSuggestionIndex >= 0) {
+          e.preventDefault();
+          const selectedSuggestion = suggestions[selectedSuggestionIndex];
+          handleSuggestionClick(selectedSuggestion);
+        }
+        break;
+      case "Escape":
+        setShowSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+        break;
+    }
+  };
+
+  const handleSuggestionClick = async (suggestion: AutocompleteSuggestion) => {
+    setQuery(suggestion.text);
+    setShowSuggestions(false);
+    setSuggestions([]); // Clear suggestions to prevent dropdown from reappearing
+    setSelectedSuggestionIndex(-1);
+    setLoading(true);
+    setError("");
+    setResults([]); // Clear previous results immediately to show loading state
+    
+    try {
+      // Use the fast video-specific search endpoint with single_result=true for autocomplete
+      const response = await fetch(
+        `http://localhost:8000/video-search?video_id=${encodeURIComponent(suggestion.video_id)}&q=${encodeURIComponent(suggestion.text)}&single_result=true`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Results are already filtered to the specific video
+      setResults(data.results || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+      setResults([]);
     } finally {
       setLoading(false);
     }
+    
+    // Focus back to input
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
   };
+
+  // Hide suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load YouTube IFrame API once
   useEffect(() => {
@@ -238,100 +364,104 @@ export default function HomePage() {
                 "Euclid Circular A,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,sans-serif",
             }}
           >
-            Search For Phrases
+            Find Phrase Examples
           </h2>
           <p className="text-lg text-gray-600">
-            Find natural pronunciation examples from real conversations
+            Type to see suggestions, then select one to find natural pronunciation examples
           </p>
         </div>
-        <form
-          onSubmit={runSearch}
-          className="bg-white rounded-xl shadow-lg p-6 mb-8"
-        >
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+          <div className="flex flex-col gap-4">
+            <div className="flex-1 relative">
               <label
                 htmlFor="search-input"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Search phrase
+                Type to see suggestions
               </label>
               <input
+                ref={searchInputRef}
                 id="search-input"
                 type="text"
-                placeholder="Type a phrase (e.g., hello)"
+                placeholder="Type a phrase to see suggestions (e.g., hello)"
                 value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setHasSearched(false);
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                onFocus={() => {
+                  if (suggestions.length > 0 && query.length >= 2) {
+                    setShowSuggestions(true);
+                  }
                 }}
                 className="w-full h-12 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-500"
+                autoComplete="off"
               />
-            </div>
-            <div className="sm:w-32">
-              <label
-                htmlFor="language-select"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Language
-              </label>
-              <select
-                id="language-select"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="w-full h-12 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 bg-white"
-              >
-                <option value="all">All</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="ru">Russian</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="zh">Chinese</option>
-              </select>
-            </div>
-
-            <div className="sm:w-auto flex items-end">
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
-                disabled={loading || !query.trim()}
-              >
-                {loading ? (
-                  <div className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    Searching...
-                  </div>
-                ) : (
-                  "Search"
-                )}
-              </button>
+              
+              {/* Autocomplete Dropdown */}
+              {showSuggestions && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                >
+                  {isLoadingSuggestions ? (
+                    <div className="px-4 py-3 text-sm text-gray-500 flex items-center">
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-400"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Loading suggestions...
+                    </div>
+                  ) : suggestions.length > 0 ? (
+                    suggestions.map((suggestion, index) => (
+                      <div
+                        key={`${suggestion.video_id}-${index}`}
+                        className={`px-4 py-3 cursor-pointer text-sm transition-colors ${
+                          index === selectedSuggestionIndex
+                            ? "bg-blue-50 text-blue-700"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                      >
+                        <div className="font-medium">{suggestion.text}</div>
+                        <div className="text-xs text-gray-500 mt-1 space-y-1">
+                          <div>From video: {suggestion.video_id}</div>
+                          {suggestion.start_time !== undefined && suggestion.end_time !== undefined && (
+                            <div className="flex items-center space-x-1">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                              </svg>
+                              <span>{formatTime(suggestion.start_time)} - {formatTime(suggestion.end_time)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      No suggestions found
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </form>
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -365,7 +495,10 @@ export default function HomePage() {
           {/* Invisible spacer that creates the container size based on search results */}
           {results.length > 0 ? (
             <div className="space-y-6">
-              {results.map((hit, idx) => {
+              {(() => {
+                // Only display the first result
+                const hit = results[0];
+                const idx = 0;
                 const earliestStart =
                   typeof hit.previous?.start_time === "number"
                     ? hit.previous.start_time
@@ -457,7 +590,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
             </div>
           ) : (
             /* Invisible spacer that matches actual search result size */
@@ -484,39 +617,31 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* No results found section - absolutely positioned */}
-          {!loading &&
-            results.length === 0 &&
-            query &&
-            !error &&
-            hasSearched && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl shadow-md p-12 text-center">
-                  <svg
-                    className="mx-auto h-16 w-16 text-yellow-400 mb-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0118 12a8 8 0 00-8-8 8 8 0 00-8 8c0 2.027.761 3.877 2.009 5.291z"
-                    />
-                  </svg>
-                  <h3 className="text-lg font-medium text-yellow-800 mb-2">
-                    No results found
+
+
+          {/* Loading placeholder - absolutely positioned */}
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-white rounded-xl shadow-md p-12 text-center">
+                <div className="max-w-md mx-auto">
+                  {/* Loading animation */}
+                  <div className="mx-auto h-16 w-16 mb-6 relative">
+                    <div className="absolute inset-0 border-4 border-blue-200 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Loading Video...
                   </h3>
-                  <p className="text-yellow-700">
-                    Try searching for a different phrase or check your spelling.
+                  <p className="text-gray-600">
+                    Finding the perfect pronunciation example for your phrase.
                   </p>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
           {/* Placeholder section - absolutely positioned */}
-          {!loading && !hasSearched && (
+          {!loading && results.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-12 text-center">
                 <div className="max-w-md mx-auto">
@@ -537,7 +662,7 @@ export default function HomePage() {
                     Search Results Will Appear Here
                   </h3>
                   <p className="text-gray-600">
-                    Enter a phrase above and click &quot;Search&quot; to find
+                    Type a phrase above to see suggestions and select one to find
                     pronunciation examples from real conversations.
                   </p>
                 </div>
