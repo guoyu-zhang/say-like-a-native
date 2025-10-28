@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from concurrent.futures import ThreadPoolExecutor
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from dotenv import load_dotenv
+from pydantic import BaseModel
 import os
+import json
+from datetime import datetime
+from pathlib import Path
 
 app = FastAPI()
 
@@ -227,3 +231,71 @@ def video_search(video_id: str, q: str = "", size: int = 25, single_result: bool
         return {"video_id": video_id, "query": q, "results": results}
     except Exception as e:
         return {"video_id": video_id, "query": q, "results": [], "error": str(e)}
+
+# Waitlist data model
+class WaitlistEntry(BaseModel):
+    email: str
+
+# Waitlist file path
+WAITLIST_FILE = Path("data/waitlist.json")
+
+def ensure_data_directory():
+    WAITLIST_FILE.parent.mkdir(exist_ok=True)
+
+def load_waitlist():
+    ensure_data_directory()
+    
+    if not WAITLIST_FILE.exists():
+        return []
+    
+    try:
+        with open(WAITLIST_FILE, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error reading waitlist file: {e}")
+        return []
+
+def save_waitlist(waitlist):
+    ensure_data_directory()
+    
+    try:
+        with open(WAITLIST_FILE, 'w') as f:
+            json.dump(waitlist, f, indent=2)
+    except Exception as e:
+        print(f"Error saving waitlist file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save waitlist data")
+
+@app.post("/waitlist")
+def add_to_waitlist(entry: WaitlistEntry):
+    email = entry.email.strip().lower()
+    
+    # Basic email validation
+    if not email or '@' not in email:
+        raise HTTPException(status_code=400, detail="Valid email address is required")
+    
+    waitlist = load_waitlist()
+    
+    # Check if email already exists
+    existing_entry = next((item for item in waitlist if item['email'] == email), None)
+    if existing_entry:
+        return {"message": "Email already registered"}
+    
+    # Add new entry
+    new_entry = {
+        "email": email,
+        "timestamp": datetime.now().isoformat(),
+        "id": str(int(datetime.now().timestamp() * 1000))
+    }
+    
+    waitlist.append(new_entry)
+    save_waitlist(waitlist)
+    
+    return {"message": "Successfully added to waitlist"}
+
+@app.get("/waitlist")
+def get_waitlist():
+    waitlist = load_waitlist()
+    return {
+        "count": len(waitlist),
+        "emails": [{"email": entry["email"], "timestamp": entry["timestamp"]} for entry in waitlist]
+    }
