@@ -275,7 +275,7 @@ export default function PricingPage() {
               <p className="text-gray-600">
                 Our phrase database is updated daily with new authentic
                 conversations. Due to API usage limitations, we add a specific
-                amount of content each day. If you can't find a particular
+                amount of content each day. If you can&apos;t find a particular
                 phrase, please check back as it may be available soon.
               </p>
             </div>
@@ -344,10 +344,10 @@ export default function PricingPage() {
                     </svg>
                   </div>
                   <h4 className="text-xl font-semibold text-gray-800 mb-2">
-                    You're on the list!
+                    You&apos;re on the list!
                   </h4>
                   <p className="text-gray-600">
-                    Thank you for joining our waitlist. We'll be in touch soon!
+                    Thank you for joining our waitlist. We&apos;ll be in touch soon!
                   </p>
                 </div>
               )}
