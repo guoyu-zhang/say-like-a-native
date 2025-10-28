@@ -267,30 +267,36 @@ def save_waitlist(waitlist):
 
 @app.post("/waitlist")
 def add_to_waitlist(entry: WaitlistEntry):
-    email = entry.email.strip().lower()
-    
-    # Basic email validation
-    if not email or '@' not in email:
-        raise HTTPException(status_code=400, detail="Valid email address is required")
-    
-    waitlist = load_waitlist()
-    
-    # Check if email already exists
-    existing_entry = next((item for item in waitlist if item['email'] == email), None)
-    if existing_entry:
-        return {"message": "Email already registered"}
-    
-    # Add new entry
-    new_entry = {
-        "email": email,
-        "timestamp": datetime.now().isoformat(),
-        "id": str(int(datetime.now().timestamp() * 1000))
-    }
-    
-    waitlist.append(new_entry)
-    save_waitlist(waitlist)
-    
-    return {"message": "Successfully added to waitlist"}
+    try:
+        email = entry.email.strip().lower()
+        
+        # Basic email validation
+        if not email or '@' not in email:
+            raise HTTPException(status_code=400, detail="Valid email address is required")
+        
+        waitlist = load_waitlist()
+        
+        # Check if email already exists
+        existing_entry = next((item for item in waitlist if item['email'] == email), None)
+        if existing_entry:
+            return {"message": "Email already registered"}
+        
+        # Add new entry
+        new_entry = {
+            "email": email,
+            "timestamp": datetime.now().isoformat(),
+            "id": str(int(datetime.now().timestamp() * 1000))
+        }
+        
+        waitlist.append(new_entry)
+        save_waitlist(waitlist)
+        
+        return {"message": "Successfully added to waitlist"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/waitlist")
 def get_waitlist():

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Backend API URL - you'll need to replace this with your actual EC2 backend URL
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,8 +36,9 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Error processing waitlist signup:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: `Internal server error: ${errorMessage}` },
       { status: 500 }
     );
   }
