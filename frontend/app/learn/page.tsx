@@ -198,15 +198,15 @@ export default function LearnPage() {
                               &quot;I&apos;m good, thanks&quot;
                             </div>
                             <div className="text-sm text-gray-600 mt-2">
-                              Positive response showing you're doing well
+                              Positive response showing you&apos;re doing well
                             </div>
                           </div>
 
                           <div className="text-sm text-gray-600 p-3 bg-yellow-50 rounded-md border border-yellow-200">
-                            After saying <strong>"I'm good, thanks,"</strong>{" "}
+                            After saying <strong>&quot;I&apos;m good, thanks,&quot;</strong>{" "}
                             you can ask back by saying{" "}
-                            <strong>"How are you?"</strong> to see how they are,
-                            or you can say <strong>"How about you?"</strong> as
+                            <strong>&quot;How are you?&quot;</strong> to see how they are,
+                            or you can say <strong>&quot;How about you?&quot;</strong> as
                             a shorter, more casual way to return the question.
                           </div>
 
@@ -232,8 +232,8 @@ export default function LearnPage() {
                             {/* Video Captions and Replay Button */}
                             <div className="mt-2 p-2 bg-gray-50 rounded flex items-center justify-between">
                               <div className="text-base text-gray-700 italic">
-                                "Hey, how are you? I'm good, how are, how are
-                                you? I'm good, thanks."
+                                &quot;Hey, how are you? I&apos;m good, how are, how are
+                                you? I&apos;m good, thanks.&quot;
                               </div>
                               <button
                                 onClick={() => {
@@ -313,7 +313,7 @@ export default function LearnPage() {
                               <button
                                 onClick={() => {
                                   const iframe = document.querySelector(
-                                    'iframe[title="What\'s your name? - Pronunciation Example"]'
+                                    'iframe[title="What\\\'s your name? - Pronunciation Example"]'
                                   ) as HTMLIFrameElement;
                                   if (iframe) {
                                     iframe.src = iframe.src;
@@ -375,7 +375,7 @@ export default function LearnPage() {
                               <button
                                 onClick={() => {
                                   const iframe = document.querySelector(
-                                    'iframe[title="I\'m [your name] - Pronunciation Example"]'
+                                    'iframe[title="I\\\'m [your name] - Pronunciation Example"]'
                                   ) as HTMLIFrameElement;
                                   if (iframe) {
                                     iframe.src = iframe.src;
@@ -547,14 +547,14 @@ export default function LearnPage() {
                       </h3>
                       <div className="text-sm text-yellow-700 space-y-2">
                         <p>
-                          <strong>American English:</strong> "Hey" is very
+                          <strong>American English:</strong> &quot;Hey&quot; is very
                           common and casual. Use with friends, colleagues, and
                           people your age.
                         </p>
                         <p>
                           <strong>Formality levels:</strong> These phrases work
                           well in casual to semi-formal situations. For very
-                          formal settings, consider "Hello" instead of "Hey".
+                          formal settings, consider &quot;Hello&quot; instead of &quot;Hey&quot;.
                         </p>
                         <p>
                           <strong>Body language:</strong> A genuine smile and
@@ -614,8 +614,8 @@ export default function LearnPage() {
                     Simple Questions & Answers
                   </h3>
                   <p className="text-sm text-gray-400">
-                    Learn to ask and answer "Where are you from?" and "What do
-                    you do?"
+                    Learn to ask and answer &quot;Where are you from?&quot; and &quot;What do
+                    you do?&quot;
                   </p>
                 </div>
               </div>
