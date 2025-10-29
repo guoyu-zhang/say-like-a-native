@@ -1,0 +1,16 @@
+# YouTube Video IDs File
+# Add one video ID or URL per line
+# Lines starting with # are comments and will be ignored
+# 
+# You can use any of these formats:
+# - Video ID only: dQw4w9WgXcQ
+# - Full YouTube URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+# - Short YouTube URL: https://youtu.be/dQw4w9WgXcQ
+# - Embed URL: https://www.youtube.com/embed/dQw4w9WgXcQ
+#
+# Example video IDs (commented out - remove # to use):
+# dQw4w9WgXcQ
+# https://www.youtube.com/watch?v=jNQXAC9IVRw
+# https://youtu.be/9bZkp7q19f0
+# 
+# Add your video IDs below:

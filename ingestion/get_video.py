@@ -1,5 +1,6 @@
 import os
 import re
+import argparse
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -26,6 +27,41 @@ def read_channel_ids(file_path="channels.txt"):
     except FileNotFoundError:
         print(f"Warning: {file_path} not found. Using default channel.")
         return []
+
+def read_video_ids(file_path="video_ids.txt"):
+    video_ids = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    video_id = extract_video_id(line)
+                    if video_id:
+                        video_ids.append(video_id)
+        return video_ids
+    except FileNotFoundError:
+        print(f"Warning: {file_path} not found.")
+        return []
+
+def extract_video_id(url_or_id):
+    """Extract video ID from YouTube URL or return as-is if already an ID"""
+    # If it's already a video ID (11 characters, alphanumeric + - and _)
+    if re.match(r'^[a-zA-Z0-9_-]{11}$', url_or_id):
+        return url_or_id
+    
+    # Extract from various YouTube URL formats
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})',
+        r'youtube\.com/watch\?.*v=([a-zA-Z0-9_-]{11})'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url_or_id)
+        if match:
+            return match.group(1)
+    
+    print(f"Warning: Could not extract video ID from: {url_or_id}")
+    return None
 
 def is_long_form_video(duration_iso):
     duration = duration_iso[2:]
@@ -121,6 +157,40 @@ def get_multiple_videos(youtube, channel_id, max_videos=10):
     
     return long_form_videos
 
+def process_specific_videos(youtube, video_ids):
+    if not video_ids:
+        return []
+    
+    processed_videos = []
+    
+    # Process videos in batches of 50 (YouTube API limit)
+    batch_size = 50
+    for i in range(0, len(video_ids), batch_size):
+        batch_ids = video_ids[i:i + batch_size]
+        
+        try:
+            # Get video details in batch
+            video_details_response = youtube.videos().list(
+                part="contentDetails,snippet",
+                id=",".join(batch_ids)
+            ).execute()
+            
+            # Process each video in the batch
+            for video_detail in video_details_response.get("items", []):
+                video_data = {
+                    "video_id": video_detail["id"],
+                    "title": video_detail["snippet"]["title"],
+                    "published_at": video_detail["snippet"]["publishedAt"],
+                    "duration": video_detail["contentDetails"]["duration"]
+                }
+                processed_videos.append(video_data)
+                
+        except Exception as e:
+            print(f"Error processing batch {i//batch_size + 1}: {e}")
+            continue
+    
+    return processed_videos
+
 def get_video_info(youtube, video_id):
     response = youtube.videos().list(
         part="snippet,contentDetails,statistics",
@@ -173,80 +243,130 @@ def save_transcript_to_file(video_id, transcript_entries, language_code=None, ou
     return str(out_path)
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Download YouTube video transcripts from channels or specific video IDs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python get_video.py                    # Process both video_ids.txt and channels.txt (default)
+  python get_video.py --videos-only      # Only process video_ids.txt
+  python get_video.py --channels-only    # Only process channels.txt
+        """
+    )
+    
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        '--videos-only',
+        action='store_true',
+        help='Only process specific video IDs from video_ids.txt'
+    )
+    group.add_argument(
+        '--channels-only',
+        action='store_true',
+        help='Only process channels from channels.txt'
+    )
+    
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    # Parse command-line arguments
+    args = parse_arguments()
+    
     api_key, proxy_username, proxy_password = load_environment()
-    
-    channel_ids = read_channel_ids()
-    
-    if not channel_ids:
-        channel_ids = ["UCftwRNsjfRo08xYE31tkiyw"]  
-    
-    # Load previously processed video IDs
+    youtube = get_youtube_service(api_key)
     processed_video_ids = load_processed_video_ids()
     
-    print(f"Processing {len(channel_ids)} channel(s)...")
-    print(f"Target: Up to 10 videos per channel (2-30 minutes duration)")
+    total_videos_processed = 0
     
-    # Overall statistics
-    total_videos_found = 0
-    total_transcripts_saved = 0
-    successful_channels = 0
-    
-    for i, channel_id in enumerate(channel_ids, 1):
-        print(f"\n--- Processing Channel {i}/{len(channel_ids)}: {channel_id} ---")
-        
-        try:
-            youtube = build("youtube", "v3", developerKey=api_key)
-            videos = get_multiple_videos(youtube, channel_id, max_videos=10)
-            print(f"Found {len(videos)} long-form videos for this channel")
-            total_videos_found += len(videos)
-            
-            successful_downloads = 0
-            for j, video_data in enumerate(videos, 1):
-                video_id = video_data["video_id"]
-                print(f"\n  Processing video {j}/{len(videos)}: {video_id}")
-                print(f"  Title: {video_data['title']}")
-                print(f"  Published: {video_data['published_at']}")
+    # Process specific video IDs if requested or if no flags are specified
+    if not args.channels_only:
+        video_ids_file = Path("video_ids.txt")
+        if video_ids_file.exists():
+            print("Processing specific video IDs from video_ids.txt...")
+            video_ids = read_video_ids()
+            if video_ids:
+                videos = process_specific_videos(youtube, video_ids)
                 
-                # Check if video has already been processed
-                if video_id in processed_video_ids:
-                    print(f"  ⏭ Video {video_id} already processed. Skipping.")
-                    continue
-                
-                try:
+                videos_processed_from_ids = 0
+                for video_data in videos:
+                    video_id = video_data['video_id']
+                    if video_id in processed_video_ids:
+                        print(f"Skipping {video_id} - already processed")
+                        continue
+                    
+                    # Get full video info for print_video_info
                     video_info = get_video_info(youtube, video_id)
                     print_video_info(video_info)
                     
-                    transcript = fetch_transcript(video_id, proxy_username, proxy_password)
-                    
-                    if transcript is not None:
-                        save_transcript_to_file(video_id, transcript, language_code=(video_info["snippet"].get("defaultAudioLanguage") or "unknown"))
-                        # Add video ID to processed list
-                        save_processed_video_id(video_id)
+                    transcript_text = fetch_transcript(video_id, proxy_username, proxy_password)
+                    if transcript_text:
+                        file_path = save_transcript_to_file(video_id, transcript_text)
+                        print(f"Transcript saved to: {file_path}")
                         processed_video_ids.add(video_id)
-                        print(f"  ✓ Transcript saved for video {video_id}")
-                        successful_downloads += 1
-                        total_transcripts_saved += 1
+                        save_processed_video_id(video_id)
+                        videos_processed_from_ids += 1
+                        total_videos_processed += 1
                     else:
-                        print(f"  ✗ No transcripts available for video {video_id}. Skipping transcript save.")
-                        
-                except Exception as video_error:
-                    print(f"  ✗ Error processing video {video_id}: {video_error}")
-                    continue  # Continue with next video even if one fails
-            
-            print(f"\nChannel {channel_id} summary: {successful_downloads}/{len(videos)} videos processed successfully")
-            if successful_downloads > 0:
-                successful_channels += 1
+                        print(f"Failed to fetch transcript for video {video_id}")
+                    
+                    print("-" * 50)
                 
-        except Exception as e:
-            print(f"Error processing channel {channel_id}: {e}")
-            continue  # Continue with next channel even if one fails
+                print(f"Processed {videos_processed_from_ids} specific videos from video_ids.txt")
+            else:
+                print("No valid video IDs found in video_ids.txt")
+        elif args.videos_only:
+            print("Error: --videos-only flag specified but video_ids.txt not found")
+            exit(1)
     
-    print(f"\n" + "="*60)
-    print(f"FINAL SUMMARY:")
-    print(f"Channels processed: {len(channel_ids)}")
-    print(f"Channels with successful downloads: {successful_channels}")
-    print(f"Total long-form videos found: {total_videos_found}")
-    print(f"Total transcripts saved: {total_transcripts_saved}")
-    print(f"Success rate: {(total_transcripts_saved/total_videos_found*100):.1f}%" if total_videos_found > 0 else "No videos found")
-    print(f"="*60)
+    # Process channels if requested or if no flags are specified
+    if not args.videos_only:
+        channel_ids = read_channel_ids()
+        if not channel_ids:
+            if args.channels_only:
+                print("Error: --channels-only flag specified but no channel IDs found in channels.txt")
+                exit(1)
+            elif not args.videos_only:
+                print("No channel IDs found in channels.txt")
+        else:
+            print("\nProcessing channels from channels.txt...")
+            
+            for channel_id in channel_ids:
+                print(f"\nProcessing channel: {channel_id}")
+                videos = get_multiple_videos(youtube, channel_id, max_videos=10)
+                
+                if not videos:
+                    print(f"No videos found for channel {channel_id}")
+                    continue
+                
+                print(f"Found {len(videos)} long-form videos (>= 10 minutes)")
+                
+                videos_processed_this_channel = 0
+                
+                for video_data in videos:
+                    video_id = video_data['video_id']
+                    if video_id in processed_video_ids:
+                        print(f"Skipping {video_id} - already processed")
+                        continue
+                    
+                    # Get full video info for print_video_info
+                    video_info = get_video_info(youtube, video_id)
+                    print_video_info(video_info)
+                    
+                    transcript_text = fetch_transcript(video_id, proxy_username, proxy_password)
+                    if transcript_text:
+                        file_path = save_transcript_to_file(video_id, transcript_text)
+                        print(f"Transcript saved to: {file_path}")
+                        processed_video_ids.add(video_id)
+                        save_processed_video_id(video_id)
+                        videos_processed_this_channel += 1
+                        total_videos_processed += 1
+                    else:
+                        print(f"Failed to fetch transcript for video {video_id}")
+                    
+                    print("-" * 50)
+                
+                print(f"Processed {videos_processed_this_channel} videos from channel {channel_id}")
+    
+    print(f"\nTotal videos processed: {total_videos_processed}")
