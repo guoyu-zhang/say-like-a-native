@@ -184,9 +184,10 @@ export default function HomePage() {
     setResults([]); // Clear previous results immediately to show loading state
     
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       // Use the fast video-specific search endpoint with single_result=true for autocomplete
       const response = await fetch(
-        `http://localhost:8000/video-search?video_id=${encodeURIComponent(suggestion.video_id)}&q=${encodeURIComponent(suggestion.text)}&single_result=true`
+        `${apiUrl}/video-search?video_id=${encodeURIComponent(suggestion.video_id)}&q=${encodeURIComponent(suggestion.text)}&single_result=true`
       );
       
       if (!response.ok) {
