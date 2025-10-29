@@ -347,7 +347,8 @@ export default function PricingPage() {
                     You&apos;re on the list!
                   </h4>
                   <p className="text-gray-600">
-                    Thank you for joining our waitlist. We&apos;ll be in touch soon!
+                    Thank you for joining our waitlist. We&apos;ll be in touch
+                    soon!
                   </p>
                 </div>
               )}
